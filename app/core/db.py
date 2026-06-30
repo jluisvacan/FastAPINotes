@@ -25,7 +25,6 @@ class Base(DeclarativeBase):
 def get_db():
     db = SessionLocal()
     try:
-        #yield, como return pero sin terminar la funcion
         yield db
     finally:
         db.close()
