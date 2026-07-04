@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
-
-from typing import Optional, List, Literal
+from fastapi import Form
+from typing import Optional, List, Literal, Annotated
 
 
 class Tag(BaseModel):
@@ -25,6 +25,7 @@ class PostBase(BaseModel):
     content: str
     tags: Optional[List[Tag]] =  Field(default_factory=list)
     author: Optional[Author] = None
+    image_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -52,6 +53,16 @@ class PostCreate(BaseModel):
         if "spam" in value.lower():
             raise ValueError("Titulo spam")
         return value
+
+    @classmethod
+    def as_form(
+            cls,
+            title: Annotated[str, Form(min_leng=3)],
+            content: Annotated[str, Form(min_leng=5)],
+            tags: Annotated[Optional[List[str]], Form()] = None,
+    ):
+        tag_objs = [Tag(name=t) for t in (tags or [])]
+        return cls(title=title, content=content, tags=tag_objs)
 
 class PostUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=3, max_length=50)

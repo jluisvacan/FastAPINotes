@@ -1,21 +1,43 @@
 from math import ceil
-from typing import Optional, List, Union, Literal
-from fastapi import APIRouter, Depends, Query, Path, HTTPException, status
+from typing import Optional, List, Union, Literal, Annotated
+from fastapi import APIRouter, Depends, Query, Path, HTTPException, status, UploadFile, File
 from app.core.db import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from .schemas import PostPublic, PaginatedPost, PostUpdate, PostBase, PostSummary, PostCreate
 from .repository import PostRepository
 from app.core.security import oauth2_scheme, get_current_user
+from app.services.file_storage import save_image
+import time
+import asyncio
+import threading
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 def get_fake_user():
     return {"username": "luis", "role": "admin"}
 
+#funcion con dependencia, necesita resolver la dependencia para ejecutarse
 @router.get("/me")
 def read_me(user: dict = Depends(get_fake_user)):
     return {"user": user}
+
+# #funcion sincrona
+# @router.get("/sync")
+# def sync_endpoint():
+#     print("SYNC theread: ", threading.current_thread().name)
+#     time.sleep(5)
+#     return {"message": "Funcion sincrona termino"}
+#
+# #la palabra reservada async define una fyncion asincrona
+# #await espera una respuesta
+# @router.get("/async")
+# async def sync_endpoint():
+#     print("ASYNC theread: ", threading.current_thread().name)
+#     await asyncio.sleep(5)
+#     return {"message": "Funcion asincrona termino"}
+
+
 
 @router.get("", response_model=PaginatedPost, response_description="Listado de posts")
 def list_posts(
@@ -117,16 +139,23 @@ def get_post(post_id: int = Path(
 
 
 @router.post("", response_model=PostPublic, response_description="Post creado OK", status_code=status.HTTP_201_CREATED)
-def create_post(post: PostCreate, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image: Optional[UploadFile] = File(None),db: Session = Depends(get_db), user = Depends(get_current_user)):
 
     repository = PostRepository(db)
+    saved = None
 
     try:
+        if image is not None:
+            saved = save_image(image)
+
+        image_url = saved["url"] if saved else None
+
         post = repository.create_post(
             title=post.title,
             content=post.content,
             author=user,
             tags=[tag.model_dump() for tag in post.tags],
+            image_url=image_url
         )
         db.commit()
         db.refresh(post)
