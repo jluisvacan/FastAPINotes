@@ -3,7 +3,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///FirstSteps\\blog.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///FirstSteps\\blog_v2.db")
 
 #
 engine_kwargs = {}

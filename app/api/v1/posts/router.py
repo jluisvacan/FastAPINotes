@@ -4,9 +4,11 @@ from fastapi import APIRouter, Depends, Query, Path, HTTPException, status, Uplo
 from app.core.db import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
+from app.models import UserORM
 from .schemas import PostPublic, PaginatedPost, PostUpdate, PostBase, PostSummary, PostCreate
 from .repository import PostRepository
-from app.core.security import oauth2_scheme, get_current_user
+from app.core.security import oauth2_scheme, get_current_user, require_user, require_editor, require_admin
 from app.services.file_storage import save_image
 import time
 import asyncio
@@ -139,7 +141,7 @@ def get_post(post_id: int = Path(
 
 
 @router.post("", response_model=PostPublic, response_description="Post creado OK", status_code=status.HTTP_201_CREATED)
-def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image: Optional[UploadFile] = File(None),db: Session = Depends(get_db), user = Depends(get_current_user)):
+def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image: Optional[UploadFile] = File(None),db: Session = Depends(get_db), _user: UserORM = Depends(require_user)):
 
     repository = PostRepository(db)
     saved = None
@@ -153,7 +155,8 @@ def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image:
         post = repository.create_post(
             title=post.title,
             content=post.content,
-            author=user,
+            author=_user,
+            category_id=post.category_id,
             tags=[tag.model_dump() for tag in post.tags],
             image_url=image_url
         )
@@ -169,7 +172,7 @@ def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image:
 
 
 @router.put("/{post_id}", response_model=PostPublic, response_description="Post actualizado", response_model_exclude_none=True)
-def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), _editor: UserORM = Depends(require_editor)):
 
     repository = PostRepository(db)
 
@@ -192,7 +195,7 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), u
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(post_id: int, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def delete_post(post_id: int, db: Session = Depends(get_db), _admin: UserORM = Depends(require_admin)):
 
     repository = PostRepository(db)
 
