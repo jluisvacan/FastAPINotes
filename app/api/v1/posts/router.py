@@ -212,6 +212,18 @@ def delete_post(post_id: int, db: Session = Depends(get_db), _admin: UserORM = D
         raise HTTPException(status_code=500, detail="Error al eliminar post")
 
 
+@router.get("/post/{slug}", response_model=Union[PostPublic, PostSummary], status_code=status.HTTP_200_OK)
+def get_post_by_slug(slug:str, include_content: bool = Query(default=True, description="Incluir o no el contenido"),
+        db: Session = Depends(get_db)):
+    repository = PostRepository(db)
+    post = repository.get_by_slug(slug)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+    if include_content:
+        return PostPublic.model_validate(post, from_attributes=True)
+
+    return PostSummary.model_validate(post, from_attributes=True)
+
 
 @router.get("/secure")
 def secure_endpoint(token: str = Depends(oauth2_scheme)):

@@ -78,6 +78,7 @@ class PostUpdate(BaseModel):
 
 class PostPublic(PostBase):
     id: int
+    slug: str
     #model_config sirve para que Pydantic entienda que la clase es un objeto de SQLAchemy
     model_config = ConfigDict(from_attributes=True)
 
