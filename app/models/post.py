@@ -7,8 +7,9 @@ from app.core.db import Base
 
 # importacion para revisar tipo de datos, no en ejecucion
 if TYPE_CHECKING:
-    from .author import AuthorORM
+    from .user import UserORM
     from .tags import TagORM
+    from .category import CategoryORM
 
 #tabla intermedia para relacion muchos a muchos
 post_tags = Table(
@@ -26,12 +27,17 @@ class PostORM(Base):
     #mapped_column permite definir los detalles del atributo
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    slug: Mapped[str] = mapped_column(String(150), unique=True, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    image_url: Mapped[str] = mapped_column(String(300), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     #Llave foranea
-    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("authors.id"))
-    author: Mapped[Optional["AuthorORM"]] = relationship(back_populates="posts")
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"))
+    user: Mapped[Optional["UserORM"]] = relationship(back_populates="posts")
+
+    category_id: Mapped[Optional[str]] = mapped_column(ForeignKey("category.id", ondelete="SET NULL"), nullable=True, index=True)
+    category = relationship("CategoryORM", back_populates="posts")
 
     tags: Mapped[List["TagORM"]] = relationship(
         secondary=post_tags,

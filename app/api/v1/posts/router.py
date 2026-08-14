@@ -1,21 +1,45 @@
 from math import ceil
-from typing import Optional, List, Union, Literal
-from fastapi import APIRouter, Depends, Query, Path, HTTPException, status
+from typing import Optional, List, Union, Literal, Annotated
+from fastapi import APIRouter, Depends, Query, Path, HTTPException, status, UploadFile, File
 from app.core.db import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+
+from app.models import UserORM
 from .schemas import PostPublic, PaginatedPost, PostUpdate, PostBase, PostSummary, PostCreate
 from .repository import PostRepository
-from app.core.security import oauth2_scheme, get_current_user
+from app.core.security import oauth2_scheme, get_current_user, require_user, require_editor, require_admin
+from app.services.file_storage import save_image
+import time
+import asyncio
+import threading
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 def get_fake_user():
     return {"username": "luis", "role": "admin"}
 
+#funcion con dependencia, necesita resolver la dependencia para ejecutarse
 @router.get("/me")
 def read_me(user: dict = Depends(get_fake_user)):
     return {"user": user}
+
+# #funcion sincrona
+# @router.get("/sync")
+# def sync_endpoint():
+#     print("SYNC theread: ", threading.current_thread().name)
+#     time.sleep(5)
+#     return {"message": "Funcion sincrona termino"}
+#
+# #la palabra reservada async define una fyncion asincrona
+# #await espera una respuesta
+# @router.get("/async")
+# async def sync_endpoint():
+#     print("ASYNC theread: ", threading.current_thread().name)
+#     await asyncio.sleep(5)
+#     return {"message": "Funcion asincrona termino"}
+
+
 
 @router.get("", response_model=PaginatedPost, response_description="Listado de posts")
 def list_posts(
@@ -117,16 +141,24 @@ def get_post(post_id: int = Path(
 
 
 @router.post("", response_model=PostPublic, response_description="Post creado OK", status_code=status.HTTP_201_CREATED)
-def create_post(post: PostCreate, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def create_post(post: Annotated[PostCreate, Depends(PostCreate.as_form)], image: Optional[UploadFile] = File(None),db: Session = Depends(get_db), _user: UserORM = Depends(require_user)):
 
     repository = PostRepository(db)
+    saved = None
 
     try:
+        if image is not None:
+            saved = save_image(image)
+
+        image_url = saved["url"] if saved else None
+
         post = repository.create_post(
             title=post.title,
             content=post.content,
-            author=user,
+            author=_user,
+            category_id=post.category_id,
             tags=[tag.model_dump() for tag in post.tags],
+            image_url=image_url
         )
         db.commit()
         db.refresh(post)
@@ -140,7 +172,7 @@ def create_post(post: PostCreate, db: Session = Depends(get_db), user = Depends(
 
 
 @router.put("/{post_id}", response_model=PostPublic, response_description="Post actualizado", response_model_exclude_none=True)
-def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), _editor: UserORM = Depends(require_editor)):
 
     repository = PostRepository(db)
 
@@ -163,7 +195,7 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db), u
 
 
 @router.delete("/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_post(post_id: int, db: Session = Depends(get_db), user = Depends(get_current_user)):
+def delete_post(post_id: int, db: Session = Depends(get_db), _admin: UserORM = Depends(require_admin)):
 
     repository = PostRepository(db)
 
@@ -179,6 +211,18 @@ def delete_post(post_id: int, db: Session = Depends(get_db), user = Depends(get_
         db.rollback()
         raise HTTPException(status_code=500, detail="Error al eliminar post")
 
+
+@router.get("/post/{slug}", response_model=Union[PostPublic, PostSummary], status_code=status.HTTP_200_OK)
+def get_post_by_slug(slug:str, include_content: bool = Query(default=True, description="Incluir o no el contenido"),
+        db: Session = Depends(get_db)):
+    repository = PostRepository(db)
+    post = repository.get_by_slug(slug)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+    if include_content:
+        return PostPublic.model_validate(post, from_attributes=True)
+
+    return PostSummary.model_validate(post, from_attributes=True)
 
 
 @router.get("/secure")

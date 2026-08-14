@@ -1,9 +1,41 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from typing import Optional, Literal
 
-class Token(BaseModel):
+
+Role = Literal["user","editor","admin"]
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserPublic(UserBase):
+    id: int
+    role: Role
+    is_active: bool
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=5, max_length=20)
+    full_name: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: UserPublic
+
+
+class RoleUpdate(BaseModel):
+    role: Role
 
 
 class TokenData(BaseModel):
@@ -11,9 +43,5 @@ class TokenData(BaseModel):
     username: str
 
 
-class UserPublic(BaseModel):
-    email: str
-    username: str
-    model_config = ConfigDict(from_attributes=True)
 
 

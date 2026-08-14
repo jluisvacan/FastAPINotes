@@ -3,7 +3,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///FirstSteps\\blog.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///FirstSteps\\blog_v2.db")
 
 #
 engine_kwargs = {}
@@ -11,7 +11,7 @@ if DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 #Configuraciones para sqlite
-engine = create_engine(DATABASE_URL, echo=True, future=True, **engine_kwargs)
+engine = create_engine(DATABASE_URL, echo=False, future=True, **engine_kwargs)
 
 #crear una sesion por cada request
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=Session)

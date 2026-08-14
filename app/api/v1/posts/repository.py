@@ -1,13 +1,14 @@
-
 from math import ceil
-
 from typing import Optional, List
 
+from fastapi import Depends
 from sqlalchemy import select, func
-
 from sqlalchemy.orm import Session, selectinload, joinedload
 
-from app.models import  AuthorORM,PostORM, TagORM
+from app.core.security import get_current_user
+from app.models import  PostORM, TagORM, UserORM
+from app.utils.slugify_utils import slugify_base, ensure_unique_slug
+
 
 class PostRepository:
 
@@ -19,6 +20,14 @@ class PostRepository:
     def get(self, post_id: int) -> Optional[PostORM]:
         post_find = select(PostORM).where(PostORM.id == post_id)
         return self.db.execute(post_find).scalar_one_or_none()
+
+
+
+    def get_by_slug(self, slug: str) -> Optional[PostORM]:
+        query = (
+            select(PostORM).where(PostORM.slug == slug)
+        )
+        return self.db.execute(query).scalar_one_or_none()
 
 
 
@@ -59,7 +68,7 @@ class PostRepository:
             select(PostORM)
             .options(
                 selectinload(PostORM.tags),
-                joinedload(PostORM.author),
+                joinedload(PostORM.user),
             ).where(PostORM.tags.any(func.lower(TagORM.name).in_(normalized_tags_name)))
             .order_by(PostORM.id.asc())
         )
@@ -68,18 +77,11 @@ class PostRepository:
 
 
 
-    def ensure_author(self, name: str, email:str) -> AuthorORM:
+    def ensure_author(self, name: str, email:str) -> UserORM:
 
         author_obj = self.db.execute(
-            select(AuthorORM).where(AuthorORM.email == email)
+            select(UserORM).where(UserORM.email == email)
         ).scalar_one_or_none()
-
-        if author_obj:
-            return author_obj
-
-        author_obj = AuthorORM(name=name, email=email)
-        self.db.add(author_obj)
-        self.db.flush()
 
         return author_obj
 
@@ -87,8 +89,10 @@ class PostRepository:
 
     def ensure_tag(self, name: str) -> TagORM:
 
+        normalize = name.strip().lower()
+
         tag_obj = self.db.execute(
-            select(TagORM).where(TagORM.name.ilike(name))
+            select(TagORM).where(func.lower(TagORM.name) == normalize)
         ).scalar_one_or_none()
 
         if tag_obj:
@@ -103,17 +107,24 @@ class PostRepository:
 
 
 
-    def create_post(self, title:str, content:str, author: Optional[dict], tags: List[dict]) -> PostORM:
+    def create_post(self, title:str, content:str, tags: List[dict], image_url: str, category_id: Optional[int], author: UserORM = Depends(get_current_user)) -> PostORM:
 
         author_obj = None
 
         if author:
-            author_obj = self.ensure_author(author["username"], author["email"])
+            author_obj = self.ensure_author(author.full_name, author.email)
 
-        post = PostORM(title=title, content=content, author=author_obj)
+        unique_slug = ensure_unique_slug(self.db,title)
 
-        for tag in tags:
-            tag_obj = self.ensure_tag(tag["name"])
+        post = PostORM(title=title, slug=unique_slug, content=content, image_url=image_url,
+                       user=author_obj, category_id=category_id)
+
+        names = tags[0]["name"].split(",")
+        for name in names:
+            name = name.strip().lower()
+            if not name:
+                continue
+            tag_obj = self.ensure_tag(name)
             post.tags.append(tag_obj)
 
         self.db.add(post)
